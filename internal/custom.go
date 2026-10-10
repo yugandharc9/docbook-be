@@ -522,7 +522,7 @@ func NewOneTapCtx(db *mongo.Database) *OneTapCtx {
 }
 
 func (o *OneTapCtx) Register(r *mux.Router) {
-	r.HandleFunc("/auth/google/onetap", o.HandleOneTap).Methods("POST", "OPTIONS")
+	r.HandleFunc("/auth/google/onetap/custom", o.HandleOneTap).Methods("POST", "OPTIONS")
 }
 
 type oneTapReq struct {
@@ -579,7 +579,14 @@ func (o *OneTapCtx) HandleOneTap(w http.ResponseWriter, r *http.Request) {
 	// Find or create user by email
 	ctx := r.Context()
 	var userDoc map[string]interface{}
-	err = o.userCol.FindOne(ctx, bson.M{"data.email": email, "deleted": false}).Decode(&userDoc)
+	userFilter := bson.M{
+		"deleted": false,
+		"$or": bson.A{
+			bson.M{"data.email": email},
+			bson.M{"data.userInfo.userIdentifier": email},
+		},
+	}
+	err = o.userCol.FindOne(ctx, userFilter).Decode(&userDoc)
 
 	var userClaims map[string]interface{}
 	if err != nil {
@@ -607,7 +614,7 @@ func (o *OneTapCtx) HandleOneTap(w http.ResponseWriter, r *http.Request) {
 		}
 		// Refresh uData in DB
 		_, _ = o.userCol.UpdateOne(ctx,
-			bson.M{"data.email": email, "deleted": false},
+			userFilter,
 			bson.M{"$set": bson.M{"data.name": uData["name"], "data.picture": uData["picture"]}},
 		)
 	}
